@@ -14,31 +14,36 @@
 #
 # Page size is defined once here so it is shared with app.R.
 
-SUBJECT_PAGE_SIZE <- 10L
-
+SUBJECT_PAGE_SIZE <- 2L
 
 #' Add KEY and SUBJ_PAGE columns to the VS dataset
 #'
 #' @param data      Full VS data frame (must contain SUBJID and VSTESTCD).
 #' @param page_size Subjects per page (default SUBJECT_PAGE_SIZE).
 #' @return data with two new columns: KEY (character) and SUBJ_PAGE (character).
-add_display_columns <- function(data, page_size = SUBJECT_PAGE_SIZE) {
-  all_subj <- sort(unique(data$SUBJID))
-  n        <- length(all_subj)
-
-  # Build a SUBJID → SUBJ_PAGE mapping frame
-  page_map <- do.call(rbind, lapply(seq(1L, n, by = page_size), function(s) {
-    e <- min(s + page_size - 1L, n)
-    data.frame(
-      SUBJID    = all_subj[s:e],
-      SUBJ_PAGE = paste0(all_subj[s], "\u2013", all_subj[e]),
-      stringsAsFactors = FALSE
-    )
-  }))
-
+add_display_columns <- function(data, arg_grp = "TRTA", page_size = SUBJECT_PAGE_SIZE) {
+ 
+  # Build SUBJID → SUBJ_PAGE mapping within each treatment group
+  page_map <- data |>
+    dplyr::select(SUBJID, !!rlang::sym(arg_grp)) |>
+    dplyr::distinct() |>
+    dplyr::arrange(!!rlang::sym(arg_grp), SUBJID) |>
+    dplyr::group_by(!!rlang::sym(arg_grp)) |>
+    dplyr::mutate(
+      row_in_grp = dplyr::row_number(),
+      page_num   = ceiling(row_in_grp / page_size)
+    ) |>
+    dplyr::group_by(!!rlang::sym(arg_grp), page_num) |>
+    dplyr::mutate(
+            SUBJ_PAGE = page_num
+      #SUBJ_PAGE = paste0(dplyr::first(row_in_grp), "\u2013", dplyr::last(row_in_grp))
+    ) |>
+    dplyr::ungroup() |>
+    dplyr::select(SUBJID, !!rlang::sym(arg_grp), SUBJ_PAGE)
+ 
   data |>
     dplyr::mutate(KEY = paste0(SUBJID, "_", VSTESTCD)) |>
-    dplyr::left_join(page_map, by = "SUBJID")
+    dplyr::left_join(page_map, by = c("SUBJID", arg_grp))
 }
 
 

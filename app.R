@@ -53,7 +53,7 @@ TRT_COLORS <- c(
 # (global subject-range label) to every row.
 
 vs            <- readRDS("data/vs.rds")
-vs_display    <- add_display_columns(vs, SUBJECT_PAGE_SIZE)
+vs_display    <- add_display_columns(vs, page_size = SUBJECT_PAGE_SIZE)
 
 all_treatments <- sort(unique(vs_display$TRTA))
 all_vstests    <- sort(unique(vs_display$VSTEST))   # no "All" — distinct only
