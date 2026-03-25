@@ -9,8 +9,10 @@
 #               parameter lines while keeping per-treatment crosstalk groups
 #               independent (needed for isolated click-highlighting).
 #
-#   SUBJ_PAGE = global range label based on SUBJID rank, e.g. "1–10", "11–20".
-#               Used by the per-panel crosstalk filter_select for subject paging.
+#   SUBJ_PAGE = integer page number within each treatment arm (1, 2, 3 …).
+#               Computed by add_display_columns() using within-group rank so
+#               page 1 of each treatment always starts at its first subject.
+#               Used by the per-panel subject-page <select> in line_table.R.
 #
 # Page size is defined once here so it is shared with app.R.
 
@@ -71,17 +73,23 @@ build_vstest_key_map <- function(data) {
 #' over the "All subjects" (clear) case that selectize single-select cannot
 #' handle.
 #'
+#' SUBJ_PAGE values are integers (1, 2, 3 …); they are coerced to character
+#' names so that jsonlite serialises them as JSON object keys ("1", "2", …)
+#' that match the string values produced by this.value in the HTML <select>.
+#'
 #' @param data  Data frame after add_display_columns() (needs TRTA, SUBJ_PAGE, KEY).
-#' @return Named list: treatment → (SUBJ_PAGE label → KEY character vector).
+#' @return Named list: treatment → (page number as string → KEY character vector).
 build_subj_page_map <- function(data) {
   trts <- sort(unique(data$TRTA))
   stats::setNames(
     lapply(trts, function(trt) {
       trt_data <- data[data$TRTA == trt, ]
       pages    <- sort(unique(trt_data$SUBJ_PAGE))
+      # Coerce page numbers to character so jsonlite produces string keys
+      # ("1", "2", …) that match this.value from the HTML <select> options.
       stats::setNames(
         lapply(pages, function(pg) unique(trt_data$KEY[trt_data$SUBJ_PAGE == pg])),
-        pages
+        as.character(pages)
       )
     }),
     trts
