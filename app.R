@@ -1,27 +1,40 @@
 # ── VS Vital Signs Explorer ────────────────────────────────────────────────────
-# Interactive Shiny app with three filter controls:
 #
-#   1. Parameter selector  – choose which VSTEST (e.g. HEART RATE) to display.
-#   2. Treatment selector  – choose which treatment arm(s) to show as panels.
-#   3. Subject page        – page through subjects (1-10, 11-20 …) within the
-#                            visible treatment panels for a cleaner view.
+# Static interactive HTML — no Shiny required.
+# Run the script and the page opens in RStudio's viewer (or the default browser).
+#
+# Three filter controls
+# ──────────────────────────────────────────────────────────────────────────────
+#  GLOBAL (rendered above all panels)
+#   1. Parameter selector  HTML <select> → only distinct VSTEST values.
+#                          Broadcasts to all treatment groups via a crosstalk
+#                          FilterHandle, so only the chosen parameter's lines
+#                          and table rows are visible across every panel.
+#
+#   2. Treatment selector  HTML checkboxes (all pre-ticked).
+#                          Unchecking a treatment hides that entire panel div
+#                          using CSS display toggling (no data is destroyed).
+#
+#  PER-PANEL (inside each treatment div, above the plot)
+#   3. Subject page        crosstalk filter_select on the pre-computed SUBJ_PAGE
+#                          column.  Shows subjects 10 at a time (e.g. "1–10",
+#                          "11–20").  Leaving it blank shows all subjects.
+#                          crosstalk ANDs this with filter (1) automatically.
 #
 # File structure
-# ├── app.R                 ← you are here (UI + server orchestration)
-# ├── R/
-# │   ├── filters.R         ← pure data-filtering functions
-# │   ├── line_table.R      ← plotly + DT panel builder (one treatment)
-# │   └── ui_components.R   ← Shiny UI control builders + input ID constants
-# └── data/
-#     ├── dummy_vs.R        ← data-generation script
-#     └── vs.rds            ← pre-built dataset
+# ──────────────────────────────────────────────────────────────────────────────
+#  app.R                  ← this file: data prep + page assembly
+#  R/filters.R            ← add_display_columns(), build_vstest_key_map()
+#  R/line_table.R         ← per-panel plot + table + subject-page selector
+#  R/ui_components.R      ← global HTML controls + JS bridge functions
+#  data/vs.rds            ← pre-built dataset (run data/dummy_vs.R to rebuild)
 
-library(shiny)
+library(dplyr)
 library(plotly)
 library(crosstalk)
 library(DT)
-library(dplyr)
 library(htmltools)
+library(jsonlite)
 
 source("R/filters.R")
 source("R/line_table.R")
@@ -29,130 +42,66 @@ source("R/ui_components.R")
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-vs <- readRDS("data/vs.rds")
-
-ALL_TREATMENTS    <- sort(unique(vs$TRTA))
-ALL_PARAMETERS    <- sort(unique(vs$VSTEST))
-SUBJECT_PAGE_SIZE <- 10
-
 TRT_COLORS <- c(
   "Drug A 10mg" = "#dc2626",
   "Drug A 20mg" = "#2563eb",
   "Placebo"     = "#16a34a"
 )
 
-# ── UI ─────────────────────────────────────────────────────────────────────────
+# ── 1. Load and pre-process data ───────────────────────────────────────────────
+# add_display_columns() attaches KEY (compound crosstalk key) and SUBJ_PAGE
+# (global subject-range label) to every row.
 
-ui <- fluidPage(
+vs            <- readRDS("data/vs.rds")
+vs_display    <- add_display_columns(vs, SUBJECT_PAGE_SIZE)
 
-  tags$head(tags$style(HTML("
-    body          { font-family: Georgia, serif; background: #f8fafc; }
-    .well         { background: #ffffff; border: 1px solid #e2e8f0;
-                    border-radius: 8px; padding: 16px; }
-    .sidebar-note { font-size: 12px; color: #94a3b8; margin-top: 4px; }
-    h2            { color: #1e293b; font-size: 20px; margin-bottom: 16px; }
-    hr            { border-color: #e2e8f0; }
-  "))),
+all_treatments <- sort(unique(vs_display$TRTA))
+all_vstests    <- sort(unique(vs_display$VSTEST))   # no "All" — distinct only
+default_vstest <- all_vstests[1]                     # activated on page load
 
-  titlePanel(
-    tags$h2("VS Vital Signs Explorer")
-  ),
+vstest_key_map <- build_vstest_key_map(vs_display)  # for the JS filter table
 
-  sidebarLayout(
+# ── 2. Build per-treatment panels ─────────────────────────────────────────────
+# Each panel is self-contained: its own SharedData group, filter_select,
+# plotly chart, and DT table.
 
-    sidebarPanel(
-      width = 3,
+panels <- lapply(all_treatments, function(trt) {
+  trt_data <- dplyr::filter(vs_display, TRTA == trt)
+  line_table(trt_data, trt, TRT_COLORS[[trt]])
+})
 
-      # ── Control 1: Parameter ──────────────────────────────────────────────
-      build_parameter_selector(ALL_PARAMETERS),
+# ── 3. Assemble and display the page ──────────────────────────────────────────
 
-      hr(),
+browsable(
+  tagList(
 
-      # ── Control 2: Treatments ─────────────────────────────────────────────
-      build_treatment_selector(ALL_TREATMENTS),
-      tags$p("Uncheck to hide a panel.", class = "sidebar-note"),
+    # ── Global controls bar ──────────────────────────────────────────────────
+    tags$div(
+      style = paste0(
+        "display: flex; align-items: center; gap: 28px; flex-wrap: wrap; ",
+        "padding: 12px 18px; margin-bottom: 18px; ",
+        "background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;"
+      ),
 
-      hr(),
+      build_global_parameter_control(all_vstests),
 
-      # ── Control 3: Subject page ───────────────────────────────────────────
-      build_subject_page_selector(),
-      tags$p(
-        paste0("Shows ", SUBJECT_PAGE_SIZE, " subjects per page."),
-        class = "sidebar-note"
-      )
+      # Thin vertical divider
+      tags$div(style = paste0(
+        "width: 1px; height: 26px; background: #e2e8f0; ",
+        "align-self: center; flex-shrink: 0;"
+      )),
+
+      build_global_treatment_control(all_treatments, TRT_COLORS)
     ),
 
-    mainPanel(
-      width = 9,
-      uiOutput("treatment_panels")
-    )
+    # ── Treatment panels ─────────────────────────────────────────────────────
+    tags$div(
+      style = "display: flex; flex-wrap: wrap; gap: 18px;",
+      panels
+    ),
+
+    # ── JavaScript for the two global filters ────────────────────────────────
+    # Must come after the widget HTML so crosstalk groups are registered first.
+    build_filter_js(vstest_key_map, all_treatments, default_vstest)
   )
 )
-
-# ── Server ─────────────────────────────────────────────────────────────────────
-
-server <- function(input, output, session) {
-
-  # ── Step 1: Filter by parameter (VSTEST) ───────────────────────────────────
-  # Applied globally; determines which rows are ever visible.
-  parameter_data <- reactive({
-    filter_by_parameter(vs, input[[ID_PARAMETER]])
-  })
-
-  # ── Step 2: Filter by selected treatment arms ──────────────────────────────
-  # Determines which treatment panels are rendered.
-  treatment_data <- reactive({
-    filter_by_treatment(parameter_data(), input[[ID_TREATMENTS]])
-  })
-
-  # ── Step 3: Sync subject-page choices with current data ────────────────────
-  # Rebuilds page labels whenever the parameter or treatment filter changes,
-  # and resets the selector to "All" to avoid stale selections.
-  observe({
-    subjects     <- get_ordered_subjects(treatment_data())
-    page_choices <- build_page_choices(subjects, SUBJECT_PAGE_SIZE)
-    updateSelectInput(session, ID_SUBJECT_PAGE,
-                      choices  = page_choices,
-                      selected = "All")
-  })
-
-  # ── Step 4: Filter by subject page ────────────────────────────────────────
-  # Applied only to the treatment panels (not to the parameter/treatment
-  # filter steps above), giving a focused view without changing the data scope.
-  display_data <- reactive({
-    filter_by_subject_page(treatment_data(), input[[ID_SUBJECT_PAGE]], SUBJECT_PAGE_SIZE)
-  })
-
-  # ── Step 5: Render treatment panels ───────────────────────────────────────
-  # One panel (plot + linked table) per selected treatment.
-  output$treatment_panels <- renderUI({
-
-    sel_trts <- input[[ID_TREATMENTS]]
-    data     <- display_data()
-
-    # Guard: nothing selected or no data after filters
-    if (is.null(sel_trts) || length(sel_trts) == 0 || nrow(data) == 0) {
-      return(div(
-        style = "padding: 60px; text-align: center; color: #94a3b8;",
-        tags$p(tags$em("No data available for the current selection."))
-      ))
-    }
-
-    # Only keep treatments that actually have rows in the current data
-    trts_to_show <- intersect(sel_trts, unique(data$TRTA))
-
-    panels <- lapply(trts_to_show, function(trt) {
-      trt_data <- dplyr::filter(data, TRTA == trt)
-      line_table(trt_data, trt, TRT_COLORS[[trt]])
-    })
-
-    div(
-      style = "display: flex; flex-wrap: wrap; gap: 20px; padding: 8px 0;",
-      panels
-    )
-  })
-}
-
-# ── Launch ─────────────────────────────────────────────────────────────────────
-
-shinyApp(ui, server)

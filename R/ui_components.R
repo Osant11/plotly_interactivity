@@ -1,62 +1,166 @@
-# ── UI component builders ──────────────────────────────────────────────────────
-# Each function returns a self-contained Shiny UI element.
-# Input IDs are declared as constants at the top so they are shared cleanly
-# between ui_components.R and app.R without duplication.
+# ── Global UI control builders (pure htmltools — no Shiny) ────────────────────
+#
+# Two global controls sit above all treatment panels:
+#   1. Parameter selector  — HTML <select> wired to the JS filterByVStest().
+#   2. Treatment selector  — HTML checkboxes wired to toggleTreatmentPanels().
+#
+# A third JavaScript block enables both controls by bridging the plain HTML
+# elements to crosstalk's FilterHandle API and CSS display toggling.
 
 
-# ── Input ID constants ─────────────────────────────────────────────────────────
-ID_PARAMETER    <- "parameter"
-ID_TREATMENTS   <- "treatments"
-ID_SUBJECT_PAGE <- "subject_page"
-
-
-#' Dropdown to select the parameter to display (based on VSTEST)
+#' Styled HTML <select> for the parameter (VSTEST) — global control
 #'
-#' @param all_parameters Character vector of all unique VSTEST values.
-#' @return A selectInput shiny tag.
-build_parameter_selector <- function(all_parameters) {
-  selectInput(
-    inputId  = ID_PARAMETER,
-    label    = tags$span(
-      tags$b("Parameter"),
-      tags$small(" (VSTEST)", style = "color:#64748b;")
+#' The onchange handler calls filterByVStest() defined in build_filter_js().
+#' No "All" option: only distinct VSTEST values from the dataset.
+#'
+#' @param all_vstests  Sorted character vector of unique VSTEST values.
+#' @return An htmltools tag.
+build_global_parameter_control <- function(all_vstests) {
+  tags$div(
+    style = "display: inline-flex; align-items: center; gap: 10px;",
+
+    tags$label(
+      `for` = "vstest-select",
+      style = paste0(
+        "font-weight: bold; font-size: 14px; ",
+        "font-family: Georgia, serif; color: #1e293b; white-space: nowrap;"
+      ),
+      "Parameter (VSTEST)"
     ),
-    choices  = c("All" = "All", setNames(all_parameters, all_parameters)),
-    selected = all_parameters[1]
+
+    tags$select(
+      id       = "vstest-select",
+      onchange = "filterByVStest(this.value)",
+      style    = paste0(
+        "padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 5px; ",
+        "font-family: Georgia, serif; font-size: 13px; color: #1e293b; ",
+        "background: #fff; cursor: pointer; min-width: 180px;"
+      ),
+      lapply(all_vstests, function(vt) tags$option(value = vt, vt))
+    )
   )
 }
 
 
-#' Checkbox group to select which treatment arm(s) to display
+#' Styled HTML checkboxes for treatment visibility — global control
 #'
-#' All treatments are pre-selected. Unchecking one hides that panel.
+#' All treatments are pre-ticked. Unchecking one hides that panel.
+#' The onchange handler calls toggleTreatmentPanels() defined in build_filter_js().
 #'
-#' @param all_treatments Character vector of all unique TRTA values.
-#' @return A checkboxGroupInput shiny tag.
-build_treatment_selector <- function(all_treatments) {
-  checkboxGroupInput(
-    inputId  = ID_TREATMENTS,
-    label    = tags$b("Treatments"),
-    choices  = all_treatments,
-    selected = all_treatments   # all visible by default
+#' @param all_trts   Character vector of unique TRTA values.
+#' @param trt_colors Named character vector: treatment name → hex colour.
+#' @return An htmltools tag.
+build_global_treatment_control <- function(all_trts, trt_colors) {
+  tags$div(
+    style = "display: inline-flex; align-items: center; gap: 18px; flex-wrap: wrap;",
+
+    tags$span(
+      style = paste0(
+        "font-weight: bold; font-size: 14px; ",
+        "font-family: Georgia, serif; color: #1e293b; white-space: nowrap;"
+      ),
+      "Treatments"
+    ),
+
+    lapply(all_trts, function(trt) {
+      col <- trt_colors[[trt]]
+      tags$label(
+        style = paste0(
+          "display: inline-flex; align-items: center; gap: 5px; cursor: pointer; ",
+          "font-family: Georgia, serif; font-size: 13px; font-weight: 600; ",
+          "color: ", col, "; white-space: nowrap;"
+        ),
+        tags$input(
+          type     = "checkbox",
+          class    = "trt-checkbox",
+          value    = trt,
+          checked  = NA,               # pre-ticked on render
+          onchange = "toggleTreatmentPanels()"
+        ),
+        trt
+      )
+    })
   )
 }
 
 
-#' Dropdown to page through subjects within the treatment panels
+#' Inline <script> block for the two global filter behaviours
 #'
-#' The choices are populated dynamically by the server via updateSelectInput();
-#' only "All" is set here as the initial placeholder.
+#' Defines two window-level functions used by the HTML controls above:
 #'
-#' @return A selectInput shiny tag.
-build_subject_page_selector <- function() {
-  selectInput(
-    inputId  = ID_SUBJECT_PAGE,
-    label    = tags$span(
-      tags$b("Subjects"),
-      tags$small(" (page)", style = "color:#64748b;")
-    ),
-    choices  = "All",
-    selected = "All"
-  )
+#'   filterByVStest(vstest)
+#'     Sets a crosstalk FilterHandle on every treatment group so that only
+#'     rows matching the chosen VSTEST are visible.  Uses the KEY → VSTEST
+#'     mapping generated by build_vstest_key_map() and serialised to JSON.
+#'
+#'   toggleTreatmentPanels()
+#'     Shows or hides treatment panel <div>s using CSS display, based on
+#'     which treatment checkboxes are currently ticked.
+#'
+#' Both functions are initialised after the page's widgets are ready so that
+#' crosstalk's FilterHandle objects can find their groups.
+#'
+#' @param vstest_key_map  Named list from build_vstest_key_map().
+#' @param trt_groups      Character vector of treatment group names (TRTA levels).
+#' @param default_vstest  VSTEST value to activate immediately on page load.
+#' @return An htmltools <script> tag.
+build_filter_js <- function(vstest_key_map, trt_groups, default_vstest) {
+  key_map_json <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
+  groups_json  <- jsonlite::toJSON(trt_groups,     auto_unbox = FALSE)
+
+  tags$script(HTML(sprintf(
+"(function () {
+  /* ── Data embedded from R ───────────────────────────────────────────── */
+  var VSTEST_KEY_MAP = %s;   /* VSTEST label  → array of compound KEYs     */
+  var TRT_GROUPS     = %s;   /* treatment group names matching SharedData   */
+
+  /* ── crosstalk FilterHandles (one per treatment group) ──────────────── */
+  /* Each handle drives the VSTEST filter for its panel independently of  */
+  /* the per-panel subject-page filter_select (crosstalk ANDs them).      */
+  var vstestHandles = {};
+
+  function initHandles() {
+    TRT_GROUPS.forEach(function (g) {
+      vstestHandles[g] = new crosstalk.FilterHandle(g);
+    });
+  }
+
+  /* ── Global: filter every panel by the chosen VSTEST ────────────────── */
+  window.filterByVStest = function (vstest) {
+    var keys = VSTEST_KEY_MAP[vstest];
+    TRT_GROUPS.forEach(function (g) {
+      if (keys && keys.length > 0) {
+        vstestHandles[g].set(keys);
+      } else {
+        vstestHandles[g].clear();
+      }
+    });
+  };
+
+  /* ── Global: show / hide treatment panel divs ────────────────────────── */
+  window.toggleTreatmentPanels = function () {
+    var checked = Array.prototype.slice
+      .call(document.querySelectorAll('.trt-checkbox:checked'))
+      .map(function (cb) { return cb.value; });
+
+    document.querySelectorAll('.treatment-panel').forEach(function (panel) {
+      var trt = panel.getAttribute('data-treatment');
+      panel.style.display =
+        (checked.length === 0 || checked.indexOf(trt) !== -1)
+          ? 'flex' : 'none';
+    });
+  };
+
+  /* ── Initialise once all widget bindings are ready ───────────────────── */
+  $(document).ready(function () {
+    initHandles();
+    /* Defer by one tick so crosstalk group subscriptions are complete.    */
+    setTimeout(function () { filterByVStest('%s'); }, 0);
+  });
+}());
+",
+    key_map_json,
+    groups_json,
+    default_vstest
+  )))
 }
