@@ -16,10 +16,11 @@
 #                          using CSS display toggling (no data is destroyed).
 #
 #  PER-PANEL (inside each treatment div, above the plot)
-#   3. Subject page        crosstalk filter_select on the pre-computed SUBJ_PAGE
-#                          column.  Shows subjects 10 at a time (e.g. "1–10",
-#                          "11–20").  Leaving it blank shows all subjects.
-#                          crosstalk ANDs this with filter (1) automatically.
+#   3. Subject page        plain HTML <select> calling filterBySubjectPage() in JS.
+#                          Shows subjects 10 at a time (e.g. "1–10", "11–20").
+#                          "All subjects" explicitly calls FilterHandle.clear() so
+#                          the filter is fully removed.  crosstalk ANDs this with
+#                          filter (1) automatically via a separate FilterHandle.
 #
 # File structure
 # ──────────────────────────────────────────────────────────────────────────────
@@ -59,10 +60,11 @@ all_treatments <- sort(unique(vs_display$TRTA))
 all_vstests    <- sort(unique(vs_display$VSTEST))   # no "All" — distinct only
 default_vstest <- all_vstests[1]                     # activated on page load
 
-vstest_key_map <- build_vstest_key_map(vs_display)  # for the JS filter table
+vstest_key_map <- build_vstest_key_map(vs_display)  # VSTEST → KEYs (for JS)
+subj_page_map  <- build_subj_page_map(vs_display)   # treatment → page → KEYs
 
 # ── 2. Build per-treatment panels ─────────────────────────────────────────────
-# Each panel is self-contained: its own SharedData group, filter_select,
+# Each panel is self-contained: its own SharedData group, subject-page selector,
 # plotly chart, and DT table.
 
 panels <- lapply(all_treatments, function(trt) {
@@ -100,8 +102,7 @@ browsable(
       panels
     ),
 
-    # ── JavaScript for the two global filters ────────────────────────────────
-    # Must come after the widget HTML so crosstalk groups are registered first.
-    build_filter_js(vstest_key_map, all_treatments, default_vstest)
+    # ── JavaScript for all three filter behaviours ───────────────────────────
+    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest)
   )
 )

@@ -62,3 +62,28 @@ build_vstest_key_map <- function(data) {
     vstests
   )
 }
+
+
+#' Build a per-treatment SUBJ_PAGE → KEY-vector mapping for the JavaScript filter
+#'
+#' Used by filterBySubjectPage() in the page JS.  A plain HTML <select> calls
+#' that function instead of crosstalk's filter_select, giving us full control
+#' over the "All subjects" (clear) case that selectize single-select cannot
+#' handle.
+#'
+#' @param data  Data frame after add_display_columns() (needs TRTA, SUBJ_PAGE, KEY).
+#' @return Named list: treatment → (SUBJ_PAGE label → KEY character vector).
+build_subj_page_map <- function(data) {
+  trts <- sort(unique(data$TRTA))
+  stats::setNames(
+    lapply(trts, function(trt) {
+      trt_data <- data[data$TRTA == trt, ]
+      pages    <- sort(unique(trt_data$SUBJ_PAGE))
+      stats::setNames(
+        lapply(pages, function(pg) unique(trt_data$KEY[trt_data$SUBJ_PAGE == pg])),
+        pages
+      )
+    }),
+    trts
+  )
+}

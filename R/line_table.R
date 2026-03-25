@@ -2,20 +2,27 @@
 #
 # Builds one treatment panel containing three linked elements:
 #
-#   1. Subject-page selector  — crosstalk filter_select on the SUBJ_PAGE column.
+#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select).
 #                               Lives inside the panel div (not global).
+#                               Calls filterBySubjectPage() defined in
+#                               ui_components.R, which drives its own
+#                               FilterHandle so that "All subjects" (value = "")
+#                               correctly calls FilterHandle.clear().
+#                               (filter_select with multiple=FALSE cannot be
+#                               cleared back to "all" in selectize single-select
+#                               mode, which is why we use a plain select here.)
 #   2. Plotly line chart      — one line per subject, click-to-highlight via
-#                               crosstalk. The VSTEST filter driven by the global
-#                               JavaScript also acts on this same SharedData group.
-#   3. DT datatable           — linked to the same SharedData group: highlighting
-#                               a subject in the plot filters the table rows too.
+#                               crosstalk. The global VSTEST filter and the
+#                               per-panel subject-page filter both target this
+#                               same SharedData group; crosstalk ANDs them.
+#   3. DT datatable           — linked to the same SharedData group.
 #
 # Compound KEY (SUBJID_VSTESTCD) is used as the crosstalk row key so that the
-# global VSTEST JavaScript filter can show/hide individual parameter lines while
+# global VSTEST JavaScript filter can restrict individual parameter lines while
 # keeping each treatment's highlight group fully independent.
 #
-# The function receives data that is already restricted to one treatment arm.
-# All other pre-processing (KEY, SUBJ_PAGE columns) is done in app.R.
+# The function receives data already restricted to one treatment arm.
+# All pre-processing (KEY, SUBJ_PAGE columns) is done in app.R.
 
 
 #' Build a linked subject-page selector + plotly chart + DT table panel
@@ -28,19 +35,36 @@
 #' @return An htmltools div forming one self-contained treatment panel.
 line_table <- function(data, trt, line_color) {
 
-  safe_trt <- gsub("[^A-Za-z0-9]", "_", trt)
   tmp_data <- SharedData$new(data, key = ~KEY, group = trt)
 
-  # ── 1. Subject-page filter (per-panel, crosstalk) ───────────────────────────
-  # Placed inside the panel div so each treatment has its own selector.
-  # Filters by SUBJ_PAGE; crosstalk intersects this with the global VSTEST
-  # filter automatically (both target the same group).
-  page_filter <- filter_select(
-    id         = paste0("page_", safe_trt),
-    label      = "Subjects (page)",
-    sharedData = tmp_data,
-    ~SUBJ_PAGE,
-    multiple   = FALSE   # single-page selection; empty = show all subjects
+  # ── 1. Subject-page selector (per-panel, plain HTML <select>) ───────────────
+  # Plain HTML is used instead of crosstalk's filter_select because selectize's
+  # single-select mode cannot be cleared back to "nothing selected" once a value
+  # has been chosen.  Our custom JS function filterBySubjectPage() explicitly
+  # calls FilterHandle.clear() when the "All subjects" option is selected.
+  js_trt      <- gsub("'", "\\'", trt, fixed = TRUE)   # safe for JS string
+  page_values <- sort(unique(data$SUBJ_PAGE))
+
+  page_select <- tags$div(
+    style = "display: flex; align-items: center; gap: 8px;",
+    tags$label(
+      style = paste0(
+        "font-weight: bold; font-size: 13px; white-space: nowrap; ",
+        "font-family: Georgia, serif; color: #1e293b;"
+      ),
+      "Subjects (page)"
+    ),
+    tags$select(
+      onchange = paste0("filterBySubjectPage('", js_trt, "', this.value)"),
+      style    = paste0(
+        "padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; ",
+        "font-family: Georgia, serif; font-size: 13px; color: #1e293b; ",
+        "background: #fff; cursor: pointer;"
+      ),
+      # Empty value → FilterHandle.clear() → all subjects restored
+      tags$option(value = "", "All subjects"),
+      lapply(page_values, function(pg) tags$option(value = pg, pg))
+    )
   )
 
   # ── 2. Plotly line chart ────────────────────────────────────────────────────
@@ -140,7 +164,7 @@ line_table <- function(data, trt, line_color) {
         "margin-bottom: 10px; padding: 8px 10px; ",
         "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;"
       ),
-      page_filter
+      page_select
     ),
 
     tmp_plot,
