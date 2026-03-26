@@ -1,8 +1,8 @@
-# line_table() # nolint
+# ── line_table() ───────────────────────────────────────────────────────────────
 #
 # Builds one treatment panel containing three linked elements:
 #
-#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select). # nolint
+#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select).
 #                               Lives inside the panel div (not global).
 #                               Calls filterBySubjectPage() defined in
 #                               ui_components.R, which drives its own
@@ -27,13 +27,15 @@
 
 #' Build a linked subject-page selector + plotly chart + DT table panel
 #'
-#' @param data       Data frame pre-filtered to a single TRTA value. Must contain KEY and SUBJ_PAGE columns (from add_display_columns()). # nolint
-#' @param trt        Character. Treatment label — used as the panel title and as the crosstalk group name. # nolint
+#' @param data       Data frame pre-filtered to a single TRTA value.
+#'                   Must contain KEY and SUBJ_PAGE columns (from add_display_columns()).
+#' @param trt        Character. Treatment label — used as the panel title and as
+#'                   the crosstalk group name.
 #' @param line_color Character. Hex colour for lines and markers.
 #' @return An htmltools div forming one self-contained treatment panel.
 line_table <- function(data, trt, line_color) {
 
-  tmp_data <- SharedData$new(data, key = ~KEY, group = trt) # nolint
+  tmp_data <- SharedData$new(data, key = ~KEY, group = trt)
 
   # ── 1. Subject-page selector (per-panel, plain HTML <select>) ───────────────
   # Plain HTML is used instead of crosstalk's filter_select because selectize's
@@ -43,7 +45,7 @@ line_table <- function(data, trt, line_color) {
   js_trt      <- gsub("'", "\\'", trt, fixed = TRUE)   # safe for JS string
   page_values <- sort(unique(data$SUBJ_PAGE))
 
-  page_select <- tags$div( # nolint
+  page_select <- tags$div(
     style = "display: flex; align-items: center; gap: 8px;",
     tags$label(
       style = paste0(
@@ -66,7 +68,7 @@ line_table <- function(data, trt, line_color) {
   )
 
   # ── 2. Plotly line chart ────────────────────────────────────────────────────
-  tmp_plot <- plot_ly( # nolint
+  tmp_plot <- plot_ly(
     data          = tmp_data,
     x             = ~ADY,
     y             = ~CHG,
@@ -79,7 +81,7 @@ line_table <- function(data, trt, line_color) {
     customdata = ~SUBJID,
     height     = 500
   ) |>
-    add_trace( # nolint
+    add_trace(
       split      = ~SUBJID,
       type       = "scatter",
       mode       = "lines",
@@ -121,18 +123,18 @@ line_table <- function(data, trt, line_color) {
       paper_bgcolor = "#ffffff",
       font          = list(family = "Georgia, serif")
     ) |>
-    config(displayModeBar = FALSE) # nolint
+    config(displayModeBar = FALSE)
 
-  tmp_plot <- highlight( # nolint
+  tmp_plot <- highlight(
     tmp_plot,
     on         = "plotly_click",
     off        = "plotly_doubleclick",
     opacityDim = 0.08,
-    selected   = attrs_selected(line = list(width = 3), marker = list(size = 9)) # nolint
+    selected   = attrs_selected(line = list(width = 3), marker = list(size = 9))
   )
 
   # ── 3. DT datatable ─────────────────────────────────────────────────────────
-  tmp_table <- datatable( # nolint
+  tmp_table <- datatable(
     tmp_data,
     style    = "default",
     width    = "100%",
@@ -140,14 +142,14 @@ line_table <- function(data, trt, line_color) {
     options  = list(
       scrollX    = TRUE,
       pageLength = 5,
-      dom        = "tip"
+      dom        = "tip"   # table + info + pagination; no search box
     )
   )
 
-  # ── Panel div ──────────────────────────────────────────────────────────────── # nolint
+  # ── Panel div ────────────────────────────────────────────────────────────────
   # data-treatment is read by toggleTreatmentPanels() in ui_components.R.
   # class="treatment-panel" is the CSS target for show/hide.
-  div( # nolint
+  div(
     class            = "treatment-panel",
     `data-treatment` = trt,
     style            = paste0(

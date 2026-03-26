@@ -1,7 +1,7 @@
-# ── VS Vital Signs Explorer ──────────────────────────────────────────────────── # nolint
+# ── VS Vital Signs Explorer ────────────────────────────────────────────────────
 #
 # Static interactive HTML — no Shiny required.
-# Run the script and the page opens in RStudio's viewer (or the default browser). # nolint
+# Run the script and the page opens in RStudio's viewer (or the default browser).
 #
 # Three filter controls
 # ──────────────────────────────────────────────────────────────────────────────
@@ -16,11 +16,11 @@
 #                          using CSS display toggling (no data is destroyed).
 #
 #  PER-PANEL (inside each treatment div, above the plot)
-#   3. Subject page        plain HTML <select> calling filterBySubjectPage() in JS. # nolint
+#   3. Subject page        plain HTML <select> calling filterBySubjectPage() in JS.
 #                          Shows subjects 10 at a time (e.g. "1–10", "11–20").
-#                          "All subjects" explicitly calls FilterHandle.clear() so  # nolint
-#                          the filter is fully removed.  crosstalk ANDs this with # nolint
-#                          filter (1) automatically via a separate FilterHandle.  # nolint
+#                          "All subjects" explicitly calls FilterHandle.clear() so
+#                          the filter is fully removed.  crosstalk ANDs this with
+#                          filter (1) automatically via a separate FilterHandle.
 #
 # File structure
 # ──────────────────────────────────────────────────────────────────────────────
@@ -41,15 +41,15 @@ source("R/filters.R")
 source("R/line_table.R")
 source("R/ui_components.R")
 
-# ── Constants ────────────────────────────────────────────────────────────────── # nolint
+# ── Constants ──────────────────────────────────────────────────────────────────
 
-TRT_COLORS <- c( # nolint
+TRT_COLORS <- c(
   "Drug A 10mg" = "#dc2626",
   "Drug A 20mg" = "#2563eb",
   "Placebo"     = "#16a34a"
 )
 
-# ── 1. Load and pre-process data ─────────────────────────────────────────────── # nolint
+# ── 1. Load and pre-process data ───────────────────────────────────────────────
 # add_display_columns() attaches KEY (compound crosstalk key) and SUBJ_PAGE
 # (global subject-range label) to every row.
 
@@ -103,6 +103,6 @@ browsable(
     ),
 
     # ── JavaScript for all three filter behaviours ───────────────────────────
-    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest) # nolint
+    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest)
   )
 )

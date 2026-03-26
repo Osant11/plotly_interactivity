@@ -16,7 +16,7 @@
 #' @param all_vstests  Sorted character vector of unique VSTEST values.
 #' @return An htmltools tag.
 build_global_parameter_control <- function(all_vstests) {
-  tags$div( # nolint
+  tags$div(
     style = "display: inline-flex; align-items: center; gap: 10px;",
 
     tags$label(
@@ -45,14 +45,14 @@ build_global_parameter_control <- function(all_vstests) {
 #' Styled HTML checkboxes for treatment visibility — global control
 #'
 #' All treatments are pre-ticked. Unchecking one hides that panel.
-#' The onchange handler calls toggleTreatmentPanels() defined in build_filter_js().  # nolint
+#' The onchange handler calls toggleTreatmentPanels() defined in build_filter_js().
 #'
 #' @param all_trts   Character vector of unique TRTA values.
 #' @param trt_colors Named character vector: treatment name → hex colour.
 #' @return An htmltools tag.
 build_global_treatment_control <- function(all_trts, trt_colors) {
-  tags$div( # nolint
-    style = "display: inline-flex; align-items: center; gap: 18px; flex-wrap: wrap;", # nolint
+  tags$div(
+    style = "display: inline-flex; align-items: center; gap: 18px; flex-wrap: wrap;",
 
     tags$span(
       style = paste0(
@@ -64,9 +64,9 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 
     lapply(all_trts, function(trt) {
       col <- trt_colors[[trt]]
-      tags$label( # nolint
+      tags$label(
         style = paste0(
-          "display: inline-flex; align-items: center; gap: 5px; cursor: pointer; ", # nolint
+          "display: inline-flex; align-items: center; gap: 5px; cursor: pointer; ",
           "font-family: Georgia, serif; font-size: 13px; font-weight: 600; ",
           "color: ", col, "; white-space: nowrap;"
         ),
@@ -110,16 +110,16 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 #' @param vstest_key_map  Named list from build_vstest_key_map().
 #' @param subj_page_map   Named list from build_subj_page_map()
 #'                        (treatment → page label → KEY vector).
-#' @param trt_groups      Character vector of treatment group names (TRTA levels). # nolint
+#' @param trt_groups      Character vector of treatment group names (TRTA levels).
 #' @param default_vstest  VSTEST value to activate on page load.
 #' @return An htmltools <script> tag.
-build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_vstest) { # nolint
+build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_vstest) {
   key_map_json  <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
   page_map_json <- jsonlite::toJSON(subj_page_map,  auto_unbox = FALSE)
   groups_json   <- jsonlite::toJSON(trt_groups,      auto_unbox = FALSE)
 
-  tags$script(HTML(sprintf( # nolint
-"(function () {  # nolint
+  tags$script(HTML(sprintf(
+"(function () {
   /* ── Data embedded from R ───────────────────────────────────────────── */
   var VSTEST_KEY_MAP = %s;   /* VSTEST label → array of compound KEYs      */
   var SUBJ_PAGE_MAP  = %s;   /* treatment → page label → array of KEYs     */
@@ -195,7 +195,7 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
       filterByVStest('%s');
     });
   } else {
-    /* Fallback for non-widget contexts (e.g. plain browser without htmlwidgets) */ # nolint
+    /* Fallback for non-widget contexts (e.g. plain browser without htmlwidgets) */
     window.addEventListener('load', function () {
       initHandles();
       filterByVStest('%s');
