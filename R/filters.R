@@ -49,6 +49,28 @@ add_display_columns <- function(data, arg_grp = "TRTA", page_size = SUBJECT_PAGE
 }
 
 
+#' Compute global CHG y-axis range per VSTEST across all treatments
+#'
+#' @param data  Full VS data frame after add_display_columns() (needs VSTEST, CHG).
+#' @param pad   Fractional padding added to each side of the range (default 0.05).
+#' @return Named list: VSTEST label → list(min = <num>, max = <num>).
+build_chg_range <- function(data, pad = 0.05) {
+  vstests <- sort(unique(data$VSTEST))
+  stats::setNames(
+    lapply(vstests, function(vt) {
+      vals <- data$CHG[data$VSTEST == vt]
+      vals <- vals[!is.na(vals)]
+      rng  <- diff(range(vals))
+      list(
+        min = floor(min(vals)   - pad * rng),
+        max = ceiling(max(vals) + pad * rng)
+      )
+    }),
+    vstests
+  )
+}
+
+
 #' Build a VSTEST → KEY-vector mapping for the JavaScript filter
 #'
 #' The list is serialised to JSON and embedded in the page as a lookup table.

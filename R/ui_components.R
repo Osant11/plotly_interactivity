@@ -74,7 +74,7 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
           type     = "checkbox",
           class    = "trt-checkbox",
           value    = trt,
-          checked  = NA,               # pre-ticked on render
+          checked  = NA,
           onchange = "toggleTreatmentPanels()"
         ),
         trt
@@ -84,50 +84,46 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 }
 
 
-#' Inline <script> block for all three filter behaviours
+#' Inline <script> block for all filter behaviours + y-axis range sync
 #'
-#' Defines three window-level functions used by the HTML controls:
+#' Defines window-level functions used by the HTML controls:
 #'
 #'   filterByVStest(vstest)
 #'     Sets a crosstalk FilterHandle on every treatment group so only rows
-#'     matching the chosen VSTEST are visible.
+#'     matching the chosen VSTEST are visible. Also calls syncYRange().
 #'
 #'   filterBySubjectPage(trt, page)
 #'     Sets or clears a per-treatment crosstalk FilterHandle for subject paging.
-#'     page = "" → FilterHandle.clear() (all subjects restored).
-#'     This replaces crosstalk's filter_select because selectize single-select
-#'     cannot be cleared back to "nothing selected" once a value is chosen.
 #'
 #'   toggleTreatmentPanels()
-#'     Shows or hides treatment panel divs via CSS display.
+#'     Shows or hides treatment panel divs via CSS display. Also calls syncYRange().
 #'
-#' Initialisation uses HTMLWidgets.addPostRenderHandler(), which fires only
-#' after every htmlwidget on the page has completed its JavaScript binding.
-#' This is the correct hook for applying the initial VSTEST filter — earlier
-#' hooks (DOMContentLoaded, setTimeout 0) fire before crosstalk group
-#' subscriptions are registered, leaving the initial filter silently ignored.
+#'   syncYRange(vstest)
+#'     Applies a shared y-axis range across all visible panels when 2+ are shown.
+#'     Resets to auto-scale when only 1 panel is visible.
+#'     Range is stable across subject page changes.
 #'
 #' @param vstest_key_map  Named list from build_vstest_key_map().
-#' @param subj_page_map   Named list from build_subj_page_map()
-#'                        (treatment → page label → KEY vector).
+#' @param subj_page_map   Named list from build_subj_page_map().
 #' @param trt_groups      Character vector of treatment group names (TRTA levels).
 #' @param default_vstest  VSTEST value to activate on page load.
+#' @param chg_range_map   Named list from build_chg_range() (VSTEST → {min, max}).
 #' @return An htmltools <script> tag.
-build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_vstest) {
-  key_map_json  <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
-  page_map_json <- jsonlite::toJSON(subj_page_map,  auto_unbox = FALSE)
-  groups_json   <- jsonlite::toJSON(trt_groups,      auto_unbox = FALSE)
+build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_vstest, chg_range_map) {
+  key_map_json   <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
+  page_map_json  <- jsonlite::toJSON(subj_page_map,  auto_unbox = FALSE)
+  groups_json    <- jsonlite::toJSON(trt_groups,      auto_unbox = FALSE)
+  range_map_json <- jsonlite::toJSON(chg_range_map,   auto_unbox = TRUE)
 
   tags$script(HTML(sprintf(
 "(function () {
   /* ── Data embedded from R ───────────────────────────────────────────── */
-  var VSTEST_KEY_MAP = %s;   /* VSTEST label → array of compound KEYs      */
-  var SUBJ_PAGE_MAP  = %s;   /* treatment → page label → array of KEYs     */
-  var TRT_GROUPS     = %s;   /* treatment group names matching SharedData   */
+  var VSTEST_KEY_MAP = %s;
+  var SUBJ_PAGE_MAP  = %s;
+  var TRT_GROUPS     = %s;
+  var CHG_RANGE_MAP  = %s;   /* VSTEST label → {min, max} across all data  */
 
   /* ── crosstalk FilterHandles ─────────────────────────────────────────── */
-  /* Two independent handles per group so VSTEST and subject-page filters  */
-  /* can be set/cleared independently; crosstalk ANDs them automatically.  */
   var vstestHandles   = {};
   var subjPageHandles = {};
 
@@ -135,6 +131,28 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
     TRT_GROUPS.forEach(function (g) {
       vstestHandles[g]   = new crosstalk.FilterHandle(g);
       subjPageHandles[g] = new crosstalk.FilterHandle(g);
+    });
+  }
+
+  /* ── Sync y-axis range across all visible panels ─────────────────────── */
+  /* Applies shared range when 2+ panels visible; auto-scales for 1 panel. */
+  /* Range is fixed across subject page changes (computed from all data).  */
+  function syncYRange(vstest) {
+    var panels  = document.querySelectorAll('.treatment-panel');
+    var visible = Array.prototype.filter.call(panels, function (p) {
+      return p.style.display !== 'none';
+    });
+    var rng = (visible.length > 1 && CHG_RANGE_MAP[vstest])
+      ? [CHG_RANGE_MAP[vstest].min, CHG_RANGE_MAP[vstest].max]
+      : null;
+    visible.forEach(function (panel) {
+      var plotDiv = panel.querySelector('.plotly');
+      if (!plotDiv) return;
+      if (rng) {
+        Plotly.relayout(plotDiv, { 'yaxis.range': rng, 'yaxis.autorange': false });
+      } else {
+        Plotly.relayout(plotDiv, { 'yaxis.autorange': true });
+      }
     });
   }
 
@@ -148,12 +166,10 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
         vstestHandles[g].clear();
       }
     });
+    syncYRange(vstest);
   };
 
   /* ── Per-panel: filter subjects by page (or clear to show all) ───────── */
-  /* Called by the plain HTML <select> inside each treatment panel.        */
-  /* page = \"\" means \"All subjects\" → explicit clear so the filter is    */
-  /* fully removed (selectize single-select cannot reach this state).      */
   window.filterBySubjectPage = function (trt, page) {
     var handle = subjPageHandles[trt];
     if (!handle) return;
@@ -182,23 +198,38 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
         (checked.length === 0 || checked.indexOf(trt) !== -1)
           ? 'flex' : 'none';
     });
+
+    var vstest = document.getElementById('vstest-select').value;
+    syncYRange(vstest);
   };
 
   /* ── Initialise after ALL htmlwidgets have finished binding ──────────── */
-  /* HTMLWidgets.addPostRenderHandler fires only once every widget on the  */
-  /* page has completed its JS binding and registered its crosstalk group  */
-  /* subscriptions.  Earlier hooks (DOMContentLoaded, setTimeout 0) fire  */
-  /* before those subscriptions exist, so the initial filter is ignored.  */
   if (typeof HTMLWidgets !== 'undefined' && HTMLWidgets.addPostRenderHandler) {
     HTMLWidgets.addPostRenderHandler(function () {
       initHandles();
       filterByVStest('%s');
+      /* Re-apply shared range after plotly de-highlight (doubleclick reset) */
+      document.querySelectorAll('.treatment-panel').forEach(function (panel) {
+        var plotDiv = panel.querySelector('.plotly');
+        if (!plotDiv) return;
+        plotDiv.on('plotly_deselect', function () {
+          var vstest = document.getElementById('vstest-select').value;
+          syncYRange(vstest);
+        });
+      });
     });
   } else {
-    /* Fallback for non-widget contexts (e.g. plain browser without htmlwidgets) */
     window.addEventListener('load', function () {
       initHandles();
       filterByVStest('%s');
+      document.querySelectorAll('.treatment-panel').forEach(function (panel) {
+        var plotDiv = panel.querySelector('.plotly');
+        if (!plotDiv) return;
+        plotDiv.on('plotly_deselect', function () {
+          var vstest = document.getElementById('vstest-select').value;
+          syncYRange(vstest);
+        });
+      });
     });
   }
 }());
@@ -206,7 +237,8 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
     key_map_json,
     page_map_json,
     groups_json,
+    range_map_json,
     default_vstest,
-    default_vstest   # repeated for the fallback branch
+    default_vstest
   )))
 }

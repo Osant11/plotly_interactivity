@@ -62,6 +62,7 @@ default_vstest <- all_vstests[1]                     # activated on page load
 
 vstest_key_map <- build_vstest_key_map(vs_display)  # VSTEST → KEYs (for JS)
 subj_page_map  <- build_subj_page_map(vs_display)   # treatment → page → KEYs
+chg_ranges     <- build_chg_range(vs_display)        # VSTEST → shared y-axis range
 
 # ── 2. Build per-treatment panels ─────────────────────────────────────────────
 # Each panel is self-contained: its own SharedData group, subject-page selector,
@@ -103,6 +104,6 @@ browsable(
     ),
 
     # ── JavaScript for all three filter behaviours ───────────────────────────
-    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest)
+    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest, chg_ranges)
   )
 )
