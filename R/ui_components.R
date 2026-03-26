@@ -208,17 +208,26 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
     HTMLWidgets.addPostRenderHandler(function () {
       initHandles();
       filterByVStest('%s');
-      /* Re-apply shared range after plotly highlight and de-highlight */
+      /* Re-apply shared range after any plotly relayout (highlight, de-highlight) */
       document.querySelectorAll('.treatment-panel').forEach(function (panel) {
         var plotDiv = panel.querySelector('.plotly');
         if (!plotDiv) return;
-        plotDiv.on('plotly_click', function () {
+        var syncing = false;
+        plotDiv.on('plotly_afterplot', function () {
+          if (syncing) return;
+          var panels  = document.querySelectorAll('.treatment-panel');
+          var visible = Array.prototype.filter.call(panels, function (p) {
+            return p.style.display !== 'none';
+          });
+          if (visible.length < 2) return;
           var vstest = document.getElementById('vstest-select').value;
-          setTimeout(function () { syncYRange(vstest); }, 0);
-        });
-        plotDiv.on('plotly_deselect', function () {
-          var vstest = document.getElementById('vstest-select').value;
-          syncYRange(vstest);
+          var rng = CHG_RANGE_MAP[vstest];
+          if (!rng) return;
+          var current = plotDiv._fullLayout && plotDiv._fullLayout.yaxis && plotDiv._fullLayout.yaxis.range;
+          if (current && Math.abs(current[0] - rng.min) < 0.001 && Math.abs(current[1] - rng.max) < 0.001) return;
+          syncing = true;
+          Plotly.relayout(plotDiv, { 'yaxis.range': [rng.min, rng.max], 'yaxis.autorange': false })
+            .then(function () { syncing = false; });
         });
       });
     });
@@ -229,13 +238,22 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
       document.querySelectorAll('.treatment-panel').forEach(function (panel) {
         var plotDiv = panel.querySelector('.plotly');
         if (!plotDiv) return;
-        plotDiv.on('plotly_click', function () {
+        var syncing = false;
+        plotDiv.on('plotly_afterplot', function () {
+          if (syncing) return;
+          var panels  = document.querySelectorAll('.treatment-panel');
+          var visible = Array.prototype.filter.call(panels, function (p) {
+            return p.style.display !== 'none';
+          });
+          if (visible.length < 2) return;
           var vstest = document.getElementById('vstest-select').value;
-          setTimeout(function () { syncYRange(vstest); }, 0);
-        });
-        plotDiv.on('plotly_deselect', function () {
-          var vstest = document.getElementById('vstest-select').value;
-          syncYRange(vstest);
+          var rng = CHG_RANGE_MAP[vstest];
+          if (!rng) return;
+          var current = plotDiv._fullLayout && plotDiv._fullLayout.yaxis && plotDiv._fullLayout.yaxis.range;
+          if (current && Math.abs(current[0] - rng.min) < 0.001 && Math.abs(current[1] - rng.max) < 0.001) return;
+          syncing = true;
+          Plotly.relayout(plotDiv, { 'yaxis.range': [rng.min, rng.max], 'yaxis.autorange': false })
+            .then(function () { syncing = false; });
         });
       });
     });
