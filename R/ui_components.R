@@ -208,10 +208,14 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
     HTMLWidgets.addPostRenderHandler(function () {
       initHandles();
       filterByVStest('%s');
-      /* Re-apply shared range after plotly de-highlight (doubleclick reset) */
+      /* Re-apply shared range after plotly highlight and de-highlight */
       document.querySelectorAll('.treatment-panel').forEach(function (panel) {
         var plotDiv = panel.querySelector('.plotly');
         if (!plotDiv) return;
+        plotDiv.on('plotly_click', function () {
+          var vstest = document.getElementById('vstest-select').value;
+          setTimeout(function () { syncYRange(vstest); }, 0);
+        });
         plotDiv.on('plotly_deselect', function () {
           var vstest = document.getElementById('vstest-select').value;
           syncYRange(vstest);
@@ -225,6 +229,10 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
       document.querySelectorAll('.treatment-panel').forEach(function (panel) {
         var plotDiv = panel.querySelector('.plotly');
         if (!plotDiv) return;
+        plotDiv.on('plotly_click', function () {
+          var vstest = document.getElementById('vstest-select').value;
+          setTimeout(function () { syncYRange(vstest); }, 0);
+        });
         plotDiv.on('plotly_deselect', function () {
           var vstest = document.getElementById('vstest-select').value;
           syncYRange(vstest);
