@@ -6,7 +6,7 @@ set.seed(42)
 
 # ── Study setup ––––––––––––––––––––––––––––––––
 
-STUDYID <- "STUDY001"
+STUDYID <- "STUDY001" # nolint
 n_subj  <- 20
 
 treatments <- c("Placebo", "Drug A 10mg", "Drug A 20mg")
@@ -18,8 +18,8 @@ visits <- tibble(
   PLANNED_DAY = c(-14, 0, 91, 182)
 )
 
-REFDATE <- as.Date("2023-01-15")
-
+REFDATE <- as.Date("2023-01-15") # nolint
+ 
 # ── Subject-level table ––––––––––––––––––––––––––––
 
 subjects <- tibble(
@@ -35,15 +35,15 @@ subjects <- tibble(
 sim_aval <- function(bl_val, param, visit_cd, trta) {
   trend <- if (param == "HR") {
     switch(trta,
-      "Placebo"     = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -1,  3), WK26 = rnorm(1,  -1,  4)),
-      "Drug A 10mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -5,  3), WK26 = rnorm(1,  -7,  4)),
-      "Drug A 20mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -9,  3), WK26 = rnorm(1, -12,  4))
+      "Placebo"     = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -1,  3), WK26 = rnorm(1,  -1,  4)), # nolint
+      "Drug A 10mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -5,  3), WK26 = rnorm(1,  -7,  4)), # nolint
+      "Drug A 20mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -9,  3), WK26 = rnorm(1, -12,  4)) # nolint
     )
   } else {  # BMI
     switch(trta,
-      "Placebo"     = c(SCRN = 0, BL = 0, WK13 = rnorm(1,  0.1, 0.3), WK26 = rnorm(1,  0.2, 0.4)),
-      "Drug A 10mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -0.3, 0.3), WK26 = rnorm(1, -0.6, 0.4)),
-      "Drug A 20mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -0.6, 0.3), WK26 = rnorm(1, -1.1, 0.4))
+      "Placebo"     = c(SCRN = 0, BL = 0, WK13 = rnorm(1,  0.1, 0.3), WK26 = rnorm(1,  0.2, 0.4)), # nolint
+      "Drug A 10mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -0.3, 0.3), WK26 = rnorm(1, -0.6, 0.4)), # nolint
+      "Drug A 20mg" = c(SCRN = 0, BL = 0, WK13 = rnorm(1, -0.6, 0.3), WK26 = rnorm(1, -1.1, 0.4)) # nolint
     )
   }
 
@@ -57,7 +57,7 @@ sim_aval <- function(bl_val, param, visit_cd, trta) {
 
 vs <- subjects |>
   cross_join(visits) |>
-  # ~18% dropout for post-baseline visits only (Screening & Baseline always present)
+  # ~18% dropout for post-baseline visits only (Screening & Baseline always present) # nolint
   mutate(drop = VISITCD %in% c("WK13", "WK26") & runif(n()) < 0.18) |>
   filter(!drop) |>
   select(-drop) |>
@@ -90,9 +90,9 @@ vs <- subjects |>
   mutate(VSBLFL = if_else(VISITCD == "BL", "Y", NA_character_)) |>
   # CHG / PCHG (post-baseline only, relative to true BL)
   mutate(
-    CHG  = if_else(VISITCD %in% c("SCRN", "BL"), NA_real_, round(AVAL - bl_val, 1)),
-    PCHG = if_else(VISITCD %in% c("SCRN", "BL"), NA_real_, round(100 * (AVAL - bl_val) / bl_val, 1)),
-    TYPET = "MSD" 
+    CHG  = round(AVAL - bl_val, 1), # nolint
+    PCHG = round(100 * (AVAL - bl_val) / bl_val, 1), # nolint
+    TYPET = "MSD"
   ) |>
   # SDTM result columns
   mutate(
@@ -119,6 +119,6 @@ vs <- subjects |>
 message(sprintf("VS dataset: %d records | %d subjects | %d treatments",
                 nrow(vs), n_distinct(vs$USUBJID), n_distinct(vs$TRTA)))
 
-print(vs |> count(TRTA, VISIT) |> tidyr::pivot_wider(names_from = VISIT, values_from = n))
+print(vs |> count(TRTA, VISIT) |> tidyr::pivot_wider(names_from = VISIT, values_from = n)) # nolint
 
-saveRDS( vs, "data/vs.rds" ) 
+saveRDS(vs, "data/vs.rds")

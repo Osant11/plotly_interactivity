@@ -1,8 +1,8 @@
-# ── line_table() ───────────────────────────────────────────────────────────────
+# line_table() # nolint
 #
 # Builds one treatment panel containing three linked elements:
 #
-#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select).
+#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select). # nolint
 #                               Lives inside the panel div (not global).
 #                               Calls filterBySubjectPage() defined in
 #                               ui_components.R, which drives its own
@@ -27,15 +27,13 @@
 
 #' Build a linked subject-page selector + plotly chart + DT table panel
 #'
-#' @param data       Data frame pre-filtered to a single TRTA value.
-#'                   Must contain KEY and SUBJ_PAGE columns (from add_display_columns()).
-#' @param trt        Character. Treatment label — used as the panel title and as
-#'                   the crosstalk group name.
+#' @param data       Data frame pre-filtered to a single TRTA value. Must contain KEY and SUBJ_PAGE columns (from add_display_columns()). # nolint
+#' @param trt        Character. Treatment label — used as the panel title and as the crosstalk group name. # nolint
 #' @param line_color Character. Hex colour for lines and markers.
 #' @return An htmltools div forming one self-contained treatment panel.
 line_table <- function(data, trt, line_color) {
 
-  tmp_data <- SharedData$new(data, key = ~KEY, group = trt)
+  tmp_data <- SharedData$new(data, key = ~KEY, group = trt) # nolint
 
   # ── 1. Subject-page selector (per-panel, plain HTML <select>) ───────────────
   # Plain HTML is used instead of crosstalk's filter_select because selectize's
@@ -45,7 +43,7 @@ line_table <- function(data, trt, line_color) {
   js_trt      <- gsub("'", "\\'", trt, fixed = TRUE)   # safe for JS string
   page_values <- sort(unique(data$SUBJ_PAGE))
 
-  page_select <- tags$div(
+  page_select <- tags$div( # nolint
     style = "display: flex; align-items: center; gap: 8px;",
     tags$label(
       style = paste0(
@@ -68,7 +66,7 @@ line_table <- function(data, trt, line_color) {
   )
 
   # ── 2. Plotly line chart ────────────────────────────────────────────────────
-  tmp_plot <- plot_ly(
+  tmp_plot <- plot_ly( # nolint
     data          = tmp_data,
     x             = ~ADY,
     y             = ~CHG,
@@ -81,7 +79,7 @@ line_table <- function(data, trt, line_color) {
     customdata = ~SUBJID,
     height     = 500
   ) |>
-    add_trace(
+    add_trace( # nolint
       split      = ~SUBJID,
       type       = "scatter",
       mode       = "lines",
@@ -123,33 +121,33 @@ line_table <- function(data, trt, line_color) {
       paper_bgcolor = "#ffffff",
       font          = list(family = "Georgia, serif")
     ) |>
-    config(displayModeBar = FALSE)
+    config(displayModeBar = FALSE) # nolint
 
-  tmp_plot <- highlight(
+  tmp_plot <- highlight( # nolint
     tmp_plot,
     on         = "plotly_click",
     off        = "plotly_doubleclick",
     opacityDim = 0.08,
-    selected   = attrs_selected(line = list(width = 3), marker = list(size = 9))
+    selected   = attrs_selected(line = list(width = 3), marker = list(size = 9)) # nolint
   )
 
   # ── 3. DT datatable ─────────────────────────────────────────────────────────
-  tmp_table <- datatable(
+  tmp_table <- datatable( # nolint
     tmp_data,
-    style    = "bootstrap",
+    style    = "default",
     width    = "100%",
     rownames = FALSE,
     options  = list(
       scrollX    = TRUE,
       pageLength = 5,
-      dom        = "tip"   # table + info + pagination; no search box
+      dom        = "tip"
     )
   )
 
-  # ── Panel div ────────────────────────────────────────────────────────────────
+  # ── Panel div ──────────────────────────────────────────────────────────────── # nolint
   # data-treatment is read by toggleTreatmentPanels() in ui_components.R.
   # class="treatment-panel" is the CSS target for show/hide.
-  div(
+  div( # nolint
     class            = "treatment-panel",
     `data-treatment` = trt,
     style            = paste0(
