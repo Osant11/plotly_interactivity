@@ -20,6 +20,7 @@ SUBJECT_PAGE_SIZE <- 2L # nolint
 
 #' Add KEY and SUBJ_PAGE columns to the VS dataset
 #'
+#' 
 #' @param data      Full VS data frame (must contain SUBJID and VSTESTCD).
 #' @param page_size Subjects per page (default SUBJECT_PAGE_SIZE).
 #' @return data with two new columns: KEY (character) and SUBJ_PAGE (character).
