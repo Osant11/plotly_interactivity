@@ -91,9 +91,8 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 #'   filterByVStest(vstest)
 #'     Sets a crosstalk FilterHandle on every treatment group so only rows
 #'     matching the chosen VSTEST are visible. Also calls syncYRange().
-#'
-#'   filterBySubjectPage(trt, page)
-#'     Sets or clears a per-treatment crosstalk FilterHandle for subject paging.
+#'     Subject-page filtering is handled natively by crosstalk via a
+#'     duplicated SharedData in line_table() — no custom JS needed here.
 #'
 #'   toggleTreatmentPanels()
 #'     Shows or hides treatment panel divs via CSS display. Also calls syncYRange().
@@ -104,14 +103,12 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 #'     Range is stable across subject page changes.
 #'
 #' @param vstest_key_map  Named list from build_vstest_key_map().
-#' @param subj_page_map   Named list from build_subj_page_map().
 #' @param trt_groups      Character vector of treatment group names (TRTA levels).
 #' @param default_vstest  VSTEST value to activate on page load.
 #' @param chg_range_map   Named list from build_chg_range() (VSTEST → {min, max}).
 #' @return An htmltools <script> tag.
-build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_vstest, chg_range_map) {
+build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_range_map) {
   key_map_json   <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
-  page_map_json  <- jsonlite::toJSON(subj_page_map,  auto_unbox = FALSE)
   groups_json    <- jsonlite::toJSON(trt_groups,      auto_unbox = FALSE)
   range_map_json <- jsonlite::toJSON(chg_range_map,   auto_unbox = TRUE)
 
@@ -119,18 +116,17 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
 "(function () {
   /* ── Data embedded from R ───────────────────────────────────────────── */
   var VSTEST_KEY_MAP = %s;
-  var SUBJ_PAGE_MAP  = %s;
   var TRT_GROUPS     = %s;
   var CHG_RANGE_MAP  = %s;   /* VSTEST label → {min, max} across all data  */
 
-  /* ── crosstalk FilterHandles ─────────────────────────────────────────── */
-  var vstestHandles   = {};
-  var subjPageHandles = {};
+  /* ── One crosstalk FilterHandle per treatment group (VSTEST only) ────── */
+  /* Subject-page filtering is handled entirely by crosstalk's native      */
+  /* filter_select on a duplicated SharedData — no custom JS needed.       */
+  var vstestHandles = {};
 
   function initHandles() {
     TRT_GROUPS.forEach(function (g) {
-      vstestHandles[g]   = new crosstalk.FilterHandle(g);
-      subjPageHandles[g] = new crosstalk.FilterHandle(g);
+      vstestHandles[g] = new crosstalk.FilterHandle(g);
     });
   }
 
@@ -167,23 +163,6 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
       }
     });
     syncYRange(vstest);
-  };
-
-  /* ── Per-panel: filter subjects by page (or clear to show all) ───────── */
-  window.filterBySubjectPage = function (trt, page) {
-    var handle = subjPageHandles[trt];
-    if (!handle) return;
-    if (!page) {
-      handle.clear();
-      return;
-    }
-    var trtMap = SUBJ_PAGE_MAP[trt];
-    var keys   = trtMap ? trtMap[page] : null;
-    if (keys && keys.length > 0) {
-      handle.set(keys);
-    } else {
-      handle.clear();
-    }
   };
 
   /* ── Global: show / hide treatment panel divs ────────────────────────── */
@@ -261,7 +240,6 @@ build_filter_js <- function(vstest_key_map, subj_page_map, trt_groups, default_v
 }());
 ",
     key_map_json,
-    page_map_json,
     groups_json,
     range_map_json,
     default_vstest,

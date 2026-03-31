@@ -2,27 +2,26 @@
 #
 # Builds one treatment panel containing three linked elements:
 #
-#   1. Subject-page selector  — plain HTML <select> (NOT crosstalk filter_select).
-#                               Lives inside the panel div (not global).
-#                               Calls filterBySubjectPage() defined in
-#                               ui_components.R, which drives its own
-#                               FilterHandle so that "All subjects" (value = "")
-#                               correctly calls FilterHandle.clear().
-#                               (filter_select with multiple=FALSE cannot be
-#                               cleared back to "all" in selectize single-select
-#                               mode, which is why we use a plain select here.)
-#   2. Plotly line chart      — one line per subject, click-to-highlight via
-#                               crosstalk. The global VSTEST filter and the
-#                               per-panel subject-page filter both target this
-#                               same SharedData group; crosstalk ANDs them.
-#   3. DT datatable           — linked to the same SharedData group.
+#   1. Subject-page selector  — crosstalk filter_select fed by a DUPLICATED
+#                               version of the data (build_subject_page_data()).
+#                               Every subject appears twice: once with its real
+#                               SUBJ_PAGE number and once with SUBJ_PAGE = "All".
+#                               "All" is therefore a real selectable value, not
+#                               an empty/cleared state — this is what lets the
+#                               user return to showing all subjects after paging.
+#   2. Plotly line chart      — uses the original (non-duplicated) data.
+#                               Shares the same crosstalk group as the
+#                               filter_select so it responds to its filter.
+#                               The global VSTEST FilterHandle also targets
+#                               this group; crosstalk ANDs both filters.
+#   3. DT datatable           — same original SharedData as the plot.
 #
-# Compound KEY (SUBJID_VSTESTCD) is used as the crosstalk row key so that the
-# global VSTEST JavaScript filter can restrict individual parameter lines while
-# keeping each treatment's highlight group fully independent.
+# Compound KEY (SUBJID_VSTESTCD) is the crosstalk row key.  Both SharedData
+# objects use the same KEY so the filter_select's key-set maps correctly onto
+# the plot/table's rows.
 #
 # The function receives data already restricted to one treatment arm.
-# All pre-processing (KEY, SUBJ_PAGE columns) is done in app.R.
+# All pre-processing (KEY, SUBJ_PAGE) is done upstream in app.R.
 
 
 #' Build a linked subject-page selector + plotly chart + DT table panel
@@ -35,36 +34,30 @@
 #' @return An htmltools div forming one self-contained treatment panel.
 line_table <- function(data, trt, line_color) {
 
+  safe_trt <- gsub("[^A-Za-z0-9]", "_", trt)
+
+  # ── Two SharedData objects sharing the same crosstalk group ─────────────────
+  # Plot + table use the original data — no duplication, no chart artefacts.
   tmp_data <- SharedData$new(data, key = ~KEY, group = trt)
 
-  # ── 1. Subject-page selector (per-panel, plain HTML <select>) ───────────────
-  # Plain HTML is used instead of crosstalk's filter_select because selectize's
-  # single-select mode cannot be cleared back to "nothing selected" once a value
-  # has been chosen.  Our custom JS function filterBySubjectPage() explicitly
-  # calls FilterHandle.clear() when the "All subjects" option is selected.
-  js_trt      <- gsub("'", "\\'", trt, fixed = TRUE)   # safe for JS string
-  page_values <- sort(unique(data$SUBJ_PAGE))
+  # filter_select uses a duplicated copy: every subject row appears twice,
+  # once with its real SUBJ_PAGE number and once with SUBJ_PAGE = "All".
+  # This gives the dropdown a real "All" value to select rather than requiring
+  # the user to clear a selectize single-select (which is impossible in that
+  # widget mode and was the root cause of the stuck-page bug).
+  tmp_data_paged <- SharedData$new(
+    build_subject_page_data(data),
+    key   = ~KEY,
+    group = trt
+  )
 
-  page_select <- tags$div(
-    style = "display: flex; align-items: center; gap: 8px;",
-    tags$label(
-      style = paste0(
-        "font-weight: bold; font-size: 13px; white-space: nowrap; ",
-        "font-family: Georgia, serif; color: #1e293b;"
-      ),
-      "Subjects (page)"
-    ),
-    tags$select(
-      onchange = paste0("filterBySubjectPage('", js_trt, "', this.value)"),
-      style    = paste0(
-        "padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; ",
-        "font-family: Georgia, serif; font-size: 13px; color: #1e293b; ",
-        "background: #fff; cursor: pointer;"
-      ),
-      # Empty value → FilterHandle.clear() → all subjects restored
-      tags$option(value = "", "All subjects"),
-      lapply(page_values, function(pg) tags$option(value = pg, pg))
-    )
+  # ── 1. Subject-page filter (per-panel, crosstalk filter_select) ─────────────
+  page_filter <- filter_select(
+    id         = paste0("page_", safe_trt),
+    label      = "Subjects (page)",
+    sharedData = tmp_data_paged,
+    ~SUBJ_PAGE,
+    multiple   = FALSE
   )
 
   # ── 2. Plotly line chart ────────────────────────────────────────────────────
@@ -164,7 +157,7 @@ line_table <- function(data, trt, line_color) {
         "margin-bottom: 10px; padding: 8px 10px; ",
         "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;"
       ),
-      page_select
+      page_filter
     ),
 
     tmp_plot,

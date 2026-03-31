@@ -16,11 +16,11 @@
 #                          using CSS display toggling (no data is destroyed).
 #
 #  PER-PANEL (inside each treatment div, above the plot)
-#   3. Subject page        plain HTML <select> calling filterBySubjectPage() in JS.
-#                          Shows subjects 10 at a time (e.g. "1–10", "11–20").
-#                          "All subjects" explicitly calls FilterHandle.clear() so
-#                          the filter is fully removed.  crosstalk ANDs this with
-#                          filter (1) automatically via a separate FilterHandle.
+#   3. Subject page        crosstalk filter_select on a duplicated SharedData.
+#                          Every subject appears twice: once with its real page
+#                          number and once with SUBJ_PAGE = "All".  Selecting
+#                          "All" picks a real value rather than clearing a
+#                          selectize widget, so returning to all subjects works.
 #
 # File structure
 # ──────────────────────────────────────────────────────────────────────────────
@@ -61,7 +61,6 @@ all_vstests    <- sort(unique(vs_display$VSTEST))   # no "All" — distinct only
 default_vstest <- all_vstests[1]                     # activated on page load
 
 vstest_key_map <- build_vstest_key_map(vs_display)  # VSTEST → KEYs (for JS)
-subj_page_map  <- build_subj_page_map(vs_display)   # treatment → page → KEYs
 chg_ranges     <- build_chg_range(vs_display)        # VSTEST → shared y-axis range
 
 # ── 2. Build per-treatment panels ─────────────────────────────────────────────
@@ -103,7 +102,8 @@ browsable(
       panels
     ),
 
-    # ── JavaScript for all three filter behaviours ───────────────────────────
-    build_filter_js(vstest_key_map, subj_page_map, all_treatments, default_vstest, chg_ranges)
+    # ── JavaScript for VSTEST + treatment-panel filters ─────────────────────
+    # Subject-page filtering is handled natively by crosstalk (no JS needed).
+    build_filter_js(vstest_key_map, all_treatments, default_vstest, chg_ranges)
   )
 )
