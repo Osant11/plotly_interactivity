@@ -89,50 +89,46 @@ build_global_treatment_control <- function(all_trts, trt_colors) {
 #' Defines window-level functions used by the HTML controls:
 #'
 #'   filterByVStest(vstest)
-#'     Sets a crosstalk FilterHandle on every treatment group so only rows
-#'     matching the chosen VSTEST are visible. Also calls syncYRange().
-#'     Subject-page filtering is handled natively by crosstalk via a
-#'     duplicated SharedData in line_table() — no custom JS needed here.
+#'     Sets a crosstalk FilterHandle on every group (all pages + All) so only
+#'     rows matching the chosen VSTEST are visible. Also calls syncYRange().
+#'
+#'   switchPage(safeTrt, page)
+#'     Shows the selected page-view div and hides the others within a panel.
 #'
 #'   toggleTreatmentPanels()
 #'     Shows or hides treatment panel divs via CSS display. Also calls syncYRange().
 #'
 #'   syncYRange(vstest)
 #'     Applies a shared y-axis range across all visible panels when 2+ are shown.
-#'     Resets to auto-scale when only 1 panel is visible.
-#'     Range is stable across subject page changes.
 #'
 #' @param vstest_key_map  Named list from build_vstest_key_map().
+#' @param all_groups      Character vector of ALL crosstalk group names
+#'                        (every trt_All + trt_p1 + trt_p2 … combination).
 #' @param trt_groups      Character vector of treatment group names (TRTA levels).
 #' @param default_vstest  VSTEST value to activate on page load.
 #' @param chg_range_map   Named list from build_chg_range() (VSTEST → {min, max}).
 #' @return An htmltools <script> tag.
-build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_range_map) {
+build_filter_js <- function(vstest_key_map, all_groups, trt_groups, default_vstest, chg_range_map) {
   key_map_json   <- jsonlite::toJSON(vstest_key_map, auto_unbox = FALSE)
-  groups_json    <- jsonlite::toJSON(trt_groups,      auto_unbox = FALSE)
-  range_map_json <- jsonlite::toJSON(chg_range_map,   auto_unbox = TRUE)
+  groups_json    <- jsonlite::toJSON(all_groups,     auto_unbox = FALSE)
+  trt_json       <- jsonlite::toJSON(trt_groups,     auto_unbox = FALSE)
+  range_map_json <- jsonlite::toJSON(chg_range_map,  auto_unbox = TRUE)
 
   tags$script(HTML(sprintf(
 "(function () {
-  /* ── Data embedded from R ───────────────────────────────────────────── */
   var VSTEST_KEY_MAP = %s;
+  var ALL_GROUPS     = %s;   /* every trt_All + trt_pN group */
   var TRT_GROUPS     = %s;
-  var CHG_RANGE_MAP  = %s;   /* VSTEST label → {min, max} across all data  */
+  var CHG_RANGE_MAP  = %s;
 
-  /* ── One crosstalk FilterHandle per treatment group (VSTEST only) ────── */
-  /* Subject-page filtering is handled entirely by crosstalk's native      */
-  /* filter_select on a duplicated SharedData — no custom JS needed.       */
   var vstestHandles = {};
 
   function initHandles() {
-    TRT_GROUPS.forEach(function (g) {
+    ALL_GROUPS.forEach(function (g) {
       vstestHandles[g] = new crosstalk.FilterHandle(g);
     });
   }
 
-  /* ── Sync y-axis range across all visible panels ─────────────────────── */
-  /* Applies shared range when 2+ panels visible; auto-scales for 1 panel. */
-  /* Range is fixed across subject page changes (computed from all data).  */
   function syncYRange(vstest) {
     var panels  = document.querySelectorAll('.treatment-panel');
     var visible = Array.prototype.filter.call(panels, function (p) {
@@ -142,7 +138,16 @@ build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_rang
       ? [CHG_RANGE_MAP[vstest].min, CHG_RANGE_MAP[vstest].max]
       : null;
     visible.forEach(function (panel) {
-      var plotDiv = panel.querySelector('.plotly');
+      var activeView = panel.querySelector('.page-view[data-page]');
+      if (activeView && activeView.style.display === 'none') activeView = null;
+      if (!activeView) {
+        var views = panel.querySelectorAll('.page-view');
+        for (var i = 0; i < views.length; i++) {
+          if (views[i].style.display !== 'none') { activeView = views[i]; break; }
+        }
+      }
+      if (!activeView) return;
+      var plotDiv = activeView.querySelector('.plotly');
       if (!plotDiv) return;
       if (rng) {
         Plotly.relayout(plotDiv, { 'yaxis.range': rng, 'yaxis.autorange': false });
@@ -152,10 +157,9 @@ build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_rang
     });
   }
 
-  /* ── Global: filter every panel by the chosen VSTEST ────────────────── */
   window.filterByVStest = function (vstest) {
     var keys = VSTEST_KEY_MAP[vstest];
-    TRT_GROUPS.forEach(function (g) {
+    ALL_GROUPS.forEach(function (g) {
       if (keys && keys.length > 0) {
         vstestHandles[g].set(keys);
       } else {
@@ -165,7 +169,16 @@ build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_rang
     syncYRange(vstest);
   };
 
-  /* ── Global: show / hide treatment panel divs ────────────────────────── */
+  /* Show the selected page-view div, hide the rest */
+  window.switchPage = function (safeTrt, page) {
+    var views = document.querySelectorAll('.page-view-' + safeTrt);
+    views.forEach(function (v) {
+      v.style.display = (v.getAttribute('data-page') === String(page)) ? 'block' : 'none';
+    });
+    var vstest = document.getElementById('vstest-select').value;
+    syncYRange(vstest);
+  };
+
   window.toggleTreatmentPanels = function () {
     var checked = Array.prototype.slice
       .call(document.querySelectorAll('.trt-checkbox:checked'))
@@ -182,40 +195,10 @@ build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_rang
     syncYRange(vstest);
   };
 
-  /* ── Initialise after ALL htmlwidgets have finished binding ──────────── */
-  if (typeof HTMLWidgets !== 'undefined' && HTMLWidgets.addPostRenderHandler) {
-    HTMLWidgets.addPostRenderHandler(function () {
-      initHandles();
-      filterByVStest('%s');
-      /* Re-apply shared range after any plotly relayout (highlight, de-highlight) */
-      document.querySelectorAll('.treatment-panel').forEach(function (panel) {
-        var plotDiv = panel.querySelector('.plotly');
-        if (!plotDiv) return;
-        var syncing = false;
-        plotDiv.on('plotly_afterplot', function () {
-          if (syncing) return;
-          var panels  = document.querySelectorAll('.treatment-panel');
-          var visible = Array.prototype.filter.call(panels, function (p) {
-            return p.style.display !== 'none';
-          });
-          if (visible.length < 2) return;
-          var vstest = document.getElementById('vstest-select').value;
-          var rng = CHG_RANGE_MAP[vstest];
-          if (!rng) return;
-          var current = plotDiv._fullLayout && plotDiv._fullLayout.yaxis && plotDiv._fullLayout.yaxis.range;
-          if (current && Math.abs(current[0] - rng.min) < 0.001 && Math.abs(current[1] - rng.max) < 0.001) return;
-          syncing = true;
-          Plotly.relayout(plotDiv, { 'yaxis.range': [rng.min, rng.max], 'yaxis.autorange': false })
-            .then(function () { syncing = false; });
-        });
-      });
-    });
-  } else {
-    window.addEventListener('load', function () {
-      initHandles();
-      filterByVStest('%s');
-      document.querySelectorAll('.treatment-panel').forEach(function (panel) {
-        var plotDiv = panel.querySelector('.plotly');
+  function attachAfterplotHandlers() {
+    document.querySelectorAll('.treatment-panel').forEach(function (panel) {
+      panel.querySelectorAll('.page-view').forEach(function (view) {
+        var plotDiv = view.querySelector('.plotly');
         if (!plotDiv) return;
         var syncing = false;
         plotDiv.on('plotly_afterplot', function () {
@@ -237,12 +220,28 @@ build_filter_js <- function(vstest_key_map, trt_groups, default_vstest, chg_rang
       });
     });
   }
+
+  function init() {
+    initHandles();
+    /* Hide all non-All page-view divs now that HTMLWidgets has bound everything */
+    document.querySelectorAll('.page-view').forEach(function (v) {
+      if (v.getAttribute('data-page') !== 'All') v.style.display = 'none';
+    });
+    filterByVStest('%s');
+    attachAfterplotHandlers();
+  }
+
+  if (typeof HTMLWidgets !== 'undefined' && HTMLWidgets.addPostRenderHandler) {
+    HTMLWidgets.addPostRenderHandler(init);
+  } else {
+    window.addEventListener('load', init);
+  }
 }());
 ",
     key_map_json,
     groups_json,
+    trt_json,
     range_map_json,
-    default_vstest,
     default_vstest
   )))
 }

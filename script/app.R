@@ -63,10 +63,14 @@ default_vstest <- all_vstests[1]                     # activated on page load
 vstest_key_map <- build_vstest_key_map(vs_display)  # VSTEST → KEYs (for JS)
 chg_ranges     <- build_chg_range(vs_display)        # VSTEST → shared y-axis range
 
-# ── 2. Build per-treatment panels ─────────────────────────────────────────────
-# Each panel is self-contained: its own SharedData group, subject-page selector,
-# plotly chart, and DT table.
+# All crosstalk group names: one per (treatment × page) + one per treatment for "All"
+# These must match the group names created by SharedData$new() in line_table().
+all_groups <- unlist(lapply(all_treatments, function(trt) {
+  pages <- sort(unique(vs_display$SUBJ_PAGE[vs_display$TRTA == trt]))
+  c(paste0(trt, "_All"), paste0(trt, "_p", pages))
+}))
 
+# ── 2. Build per-treatment panels ─────────────────────────────────────────────
 panels <- lapply(all_treatments, function(trt) {
   trt_data <- dplyr::filter(vs_display, TRTA == trt)
   line_table(trt_data, trt, TRT_COLORS[[trt]])
@@ -104,6 +108,6 @@ browsable(
 
     # ── JavaScript for VSTEST + treatment-panel filters ─────────────────────
     # Subject-page filtering is handled natively by crosstalk (no JS needed).
-    build_filter_js(vstest_key_map, all_treatments, default_vstest, chg_ranges)
+    build_filter_js(vstest_key_map, all_groups, all_treatments, default_vstest, chg_ranges)
   )
 )

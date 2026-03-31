@@ -12,10 +12,7 @@
 #   SUBJ_PAGE = integer page number within each treatment arm (1, 2, 3 …).
 #               Computed by add_display_columns() using within-group rank so
 #               page 1 of each treatment always starts at its first subject.
-#               build_subject_page_data() then produces a second copy of the
-#               data where every row has SUBJ_PAGE = "All", bound together
-#               with the paged version so that the per-panel filter_select
-#               has an explicit "All" option alongside the page numbers.
+#               Used by the per-panel subject-page <select> in line_table.R.
 #
 # Page size is defined once here so it is shared with app.R.
 
@@ -91,27 +88,32 @@ build_vstest_key_map <- function(data) {
 }
 
 
-#' Build the duplicated dataset used by the per-panel subject-page filter_select
+#' Build a per-treatment SUBJ_PAGE → KEY-vector mapping for the JavaScript filter
 #'
-#' The trick that makes "All subjects" work inside a crosstalk filter_select:
-#' each subject row is duplicated — once with its real SUBJ_PAGE number and
-#' once with SUBJ_PAGE = "All".  The "All" copy is prepended so it appears
-#' first in the filter_select dropdown.
+#' Used by filterBySubjectPage() in the page JS.  A plain HTML <select> calls
+#' that function instead of crosstalk's filter_select, giving us full control
+#' over the "All subjects" (clear) case that selectize single-select cannot
+#' handle.
 #'
-#' The filter_select widget uses this duplicated data (same crosstalk group as
-#' the plot/table).  Selecting "All" activates every KEY in the group (all
-#' subjects visible); selecting a page number activates only that page's KEYs.
-#' Switching back to "All" now picks a real dropdown value instead of trying
-#' to clear a selectize single-select — which was the root cause of the bug.
+#' SUBJ_PAGE values are integers (1, 2, 3 …); they are coerced to character
+#' names so that jsonlite serialises them as JSON object keys ("1", "2", …)
+#' that match the string values produced by this.value in the HTML <select>.
 #'
-#' @param data  A single-treatment data frame after add_display_columns()
-#'              (needs KEY and SUBJ_PAGE).
-#' @return data frame with original rows (SUBJ_PAGE as character "1", "2" …)
-#'         plus one copy per row with SUBJ_PAGE = "All", "All" rows first.
-build_subject_page_data <- function(data) {
-  paged <- dplyr::mutate(data, SUBJ_PAGE = as.character(SUBJ_PAGE))
-  dplyr::bind_rows(
-    dplyr::mutate(paged, SUBJ_PAGE = "All"),   # "All" first → appears first in dropdown
-    paged
+#' @param data  Data frame after add_display_columns() (needs TRTA, SUBJ_PAGE, KEY).
+#' @return Named list: treatment → (page number as string → KEY character vector).
+build_subj_page_map <- function(data) {
+  trts <- sort(unique(data$TRTA))
+  stats::setNames(
+    lapply(trts, function(trt) {
+      trt_data <- data[data$TRTA == trt, ]
+      pages    <- sort(unique(trt_data$SUBJ_PAGE))
+      # Coerce page numbers to character so jsonlite produces string keys
+      # ("1", "2", …) that match this.value from the HTML <select> options.
+      stats::setNames(
+        lapply(pages, function(pg) unique(trt_data$KEY[trt_data$SUBJ_PAGE == pg])),
+        as.character(pages)
+      )
+    }),
+    trts
   )
 }

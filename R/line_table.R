@@ -1,68 +1,21 @@
 # ── line_table() ───────────────────────────────────────────────────────────────
 #
-# Builds one treatment panel containing three linked elements:
+# Builds one treatment panel with independent SharedData per page + "All".
+# Each page selection (including "All") is a fully isolated dataset so that
+# crosstalk highlighting in one page never bleeds into another.
 #
-#   1. Subject-page selector  — crosstalk filter_select fed by a DUPLICATED
-#                               version of the data (build_subject_page_data()).
-#                               Every subject appears twice: once with its real
-#                               SUBJ_PAGE number and once with SUBJ_PAGE = "All".
-#                               "All" is therefore a real selectable value, not
-#                               an empty/cleared state — this is what lets the
-#                               user return to showing all subjects after paging.
-#   2. Plotly line chart      — uses the original (non-duplicated) data.
-#                               Shares the same crosstalk group as the
-#                               filter_select so it responds to its filter.
-#                               The global VSTEST FilterHandle also targets
-#                               this group; crosstalk ANDs both filters.
-#   3. DT datatable           — same original SharedData as the plot.
-#
-# Compound KEY (SUBJID_VSTESTCD) is the crosstalk row key.  Both SharedData
-# objects use the same KEY so the filter_select's key-set maps correctly onto
-# the plot/table's rows.
-#
-# The function receives data already restricted to one treatment arm.
-# All pre-processing (KEY, SUBJ_PAGE) is done upstream in app.R.
+# Architecture:
+#   - "All"    → SharedData over the full treatment data (group = "<trt>_All")
+#   - Page N   → SharedData over only that page's subjects (group = "<trt>_pN")
+#   - A plain HTML <select> shows/hides the corresponding plot+table div.
+#   - The global VSTEST FilterHandle targets every group name.
 
 
-#' Build a linked subject-page selector + plotly chart + DT table panel
-#'
-#' @param data       Data frame pre-filtered to a single TRTA value.
-#'                   Must contain KEY and SUBJ_PAGE columns (from add_display_columns()).
-#' @param trt        Character. Treatment label — used as the panel title and as
-#'                   the crosstalk group name.
-#' @param line_color Character. Hex colour for lines and markers.
-#' @return An htmltools div forming one self-contained treatment panel.
-line_table <- function(data, trt, line_color) {
-
-  safe_trt <- gsub("[^A-Za-z0-9]", "_", trt)
-
-  # ── Two SharedData objects sharing the same crosstalk group ─────────────────
-  # Plot + table use the original data — no duplication, no chart artefacts.
-  tmp_data <- SharedData$new(data, key = ~KEY, group = trt)
-
-  # filter_select uses a duplicated copy: every subject row appears twice,
-  # once with its real SUBJ_PAGE number and once with SUBJ_PAGE = "All".
-  # This gives the dropdown a real "All" value to select rather than requiring
-  # the user to clear a selectize single-select (which is impossible in that
-  # widget mode and was the root cause of the stuck-page bug).
-  tmp_data_paged <- SharedData$new(
-    build_subject_page_data(data),
-    key   = ~KEY,
-    group = trt
-  )
-
-  # ── 1. Subject-page filter (per-panel, crosstalk filter_select) ─────────────
-  page_filter <- filter_select(
-    id         = paste0("page_", safe_trt),
-    label      = "Subjects (page)",
-    sharedData = tmp_data_paged,
-    ~SUBJ_PAGE,
-    multiple   = FALSE
-  )
-
-  # ── 2. Plotly line chart ────────────────────────────────────────────────────
+#' Build one plot+table widget pair for a single SharedData
+#' @keywords internal
+build_plot_table <- function(sd, trt, line_color, table_id) {
   tmp_plot <- plot_ly(
-    data          = tmp_data,
+    data          = sd,
     x             = ~ADY,
     y             = ~CHG,
     color         = I(line_color),
@@ -108,59 +61,115 @@ line_table <- function(data, trt, line_color) {
       ),
       legend = list(
         orientation = "h",
-        x           = 0.5,
-        xanchor     = "center",
-        y           = -0.2
+        x = 0.5, xanchor = "center", y = -0.2
       ),
       plot_bgcolor  = "#fafafa",
       paper_bgcolor = "#ffffff",
       font          = list(family = "Georgia, serif")
     ) |>
-    config(displayModeBar = FALSE)
+    config(displayModeBar = FALSE) |>
+    highlight(
+      on         = "plotly_click",
+      off        = "plotly_doubleclick",
+      opacityDim = 0.08,
+      selected   = attrs_selected(line = list(width = 3), marker = list(size = 9))
+    )
 
-  tmp_plot <- highlight(
-    tmp_plot,
-    on         = "plotly_click",
-    off        = "plotly_doubleclick",
-    opacityDim = 0.08,
-    selected   = attrs_selected(line = list(width = 3), marker = list(size = 9))
+  tmp_table <- datatable(
+    sd,
+    elementId = table_id,
+    style     = "default",
+    width     = "100%",
+    rownames  = FALSE,
+    options   = list(scrollX = TRUE, pageLength = 5, dom = "tip")
   )
 
-  # ── 3. DT datatable ─────────────────────────────────────────────────────────
-  tmp_table <- datatable(
-    tmp_data,
-    style    = "default",
-    width    = "100%",
-    rownames = FALSE,
-    options  = list(
-      scrollX    = TRUE,
-      pageLength = 5,
-      dom        = "tip"   # table + info + pagination; no search box
+  tagList(tmp_plot, div(style = "margin-top: 12px;", tmp_table))
+}
+
+
+#' Build a linked subject-page selector + plotly chart + DT table panel
+#'
+#' @param data       Data frame pre-filtered to a single TRTA value.
+#'                   Must contain KEY and SUBJ_PAGE columns (from add_display_columns()).
+#' @param trt        Character. Treatment label.
+#' @param line_color Character. Hex colour for lines and markers.
+#' @return An htmltools div forming one self-contained treatment panel.
+line_table <- function(data, trt, line_color) {
+
+  safe_trt <- gsub("[^A-Za-z0-9]", "_", trt)
+  pages    <- sort(unique(data$SUBJ_PAGE))
+
+  # ── Independent SharedData per page + one for "All" ──────────────────────────
+  # Each has its own crosstalk group so highlights are fully isolated.
+  make_sd <- function(d, suffix)
+    SharedData$new(d, key = ~KEY, group = paste0(trt, "_", suffix))
+
+  sd_all   <- make_sd(data, "All")
+  sd_pages <- stats::setNames(
+    lapply(pages, function(pg) make_sd(data[data$SUBJ_PAGE == pg, ], paste0("p", pg))),
+    as.character(pages)
+  )
+
+  # ── Page <select> ────────────────────────────────────────────────────────────
+  select_id <- paste0("page_sel_", safe_trt)
+  page_options <- c(
+    list(tags$option(value = "All", "All")),
+    lapply(pages, function(pg) tags$option(value = pg, paste0("Page ", pg)))
+  )
+
+  page_select <- tags$div(
+    style = paste0(
+      "margin-bottom: 10px; padding: 8px 10px; ",
+      "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px; ",
+      "display: inline-flex; align-items: center; gap: 10px;"
+    ),
+    tags$label(
+      `for` = select_id,
+      style = "font-weight: bold; font-size: 13px; font-family: Georgia, serif; color: #1e293b;",
+      "Subjects (page)"
+    ),
+    tags$select(
+      id       = select_id,
+      onchange = sprintf("switchPage('%s', this.value)", safe_trt),
+      style    = paste0(
+        "padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 5px; ",
+        "font-family: Georgia, serif; font-size: 13px; color: #1e293b; background: #fff;"
+      ),
+      page_options
+    )
+  )
+
+  # ── One div per page selection (plot + table), only "All" visible initially ──
+  make_page_div <- function(sd, key, visible) {
+    table_id <- paste0("dt_", safe_trt, "_", key)
+    div(
+      class            = paste0("page-view page-view-", safe_trt),
+      `data-page`      = key,
+      `data-table-id`  = table_id,
+      style            = "display:block",
+      build_plot_table(sd, trt, line_color, table_id)
+    )
+  }
+
+  page_divs <- c(
+    list(make_page_div(sd_all, "All", visible = TRUE)),
+    lapply(as.character(pages), function(pg)
+      make_page_div(sd_pages[[pg]], pg, visible = FALSE)
     )
   )
 
   # ── Panel div ────────────────────────────────────────────────────────────────
-  # data-treatment is read by toggleTreatmentPanels() in ui_components.R.
-  # class="treatment-panel" is the CSS target for show/hide.
   div(
     class            = "treatment-panel",
     `data-treatment` = trt,
+    `data-safe-trt`  = safe_trt,
     style            = paste0(
       "flex: 1; min-width: 400px; display: flex; flex-direction: column; ",
       "background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; ",
       "padding: 14px; box-sizing: border-box;"
     ),
-
-    # Subject-page selector at the top of the panel
-    div(
-      style = paste0(
-        "margin-bottom: 10px; padding: 8px 10px; ",
-        "background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 5px;"
-      ),
-      page_filter
-    ),
-
-    tmp_plot,
-    div(style = "margin-top: 12px;", tmp_table)
+    page_select,
+    page_divs
   )
 }
